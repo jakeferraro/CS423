@@ -304,3 +304,41 @@ customer_transformer = Pipeline(steps=[
     ('os', CustomOHETransformer(target_column='OS')),
     ('isp', CustomOHETransformer(target_column='ISP')),
     ], verbose=True)
+
+
+
+class CustomPearsonTransformer(BaseEstimator, TransformerMixin):
+    """
+    A custom scikit-learn transformer that removes highly correlated features
+    based on Pearson correlation.
+
+    Parameters
+    ----------
+    threshold : float
+        The correlation threshold above which features are considered too highly correlated
+        and will be removed.
+
+    Attributes
+    ----------
+    correlated_columns : Optional[List[Hashable]]
+        A list of column names (which can be strings, integers, or other hashable types)
+        that are identified as highly correlated and will be removed.
+    """
+    def __init__(self, threshold=0.4):
+        self.threshold = threshold
+        self.correlated_columns = None
+
+    def fit(self, X, y=None):
+        df_corr = X.corr(method='pearson')
+        abs_corr = np.abs(df_corr)
+        masked_df = abs_corr > self.threshold
+        upper_mask = np.triu(np.ones(masked_df.shape), k=1).astype(bool)
+        masked_df = masked_df & upper_mask
+        self.correlated_columns = [masked_df.columns[i] for i, col in enumerate(masked_df.astype(bool).T) if masked_df.astype(bool).iloc[:, i].any()]
+        return self
+
+    def transform(self, X):
+        if self.correlated_columns is None:
+            raise AssertionError("PearsonTransformer.transform called before fit.")
+        return X.drop(columns=self.correlated_columns)
+
