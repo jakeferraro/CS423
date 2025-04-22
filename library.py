@@ -342,3 +342,87 @@ class CustomPearsonTransformer(BaseEstimator, TransformerMixin):
             raise AssertionError("PearsonTransformer.transform called before fit.")
         return X.drop(columns=self.correlated_columns)
 
+
+
+class CustomSigma3Transformer(BaseEstimator, TransformerMixin):
+    """
+    A transformer that applies 3-sigma clipping to a specified column in a pandas DataFrame.
+
+    This transformer follows the scikit-learn transformer interface and can be used in
+    a scikit-learn pipeline. It clips values in the target column to be within three standard
+    deviations from the mean.
+
+    Parameters
+    ----------
+    target_column : Hashable
+        The name of the column to apply 3-sigma clipping on.
+
+    Attributes
+    ----------
+    high_wall : Optional[float]
+        The upper bound for clipping, computed as mean + 3 * standard deviation.
+    low_wall : Optional[float]
+        The lower bound for clipping, computed as mean - 3 * standard deviation.
+    """
+    def __init__(self, target_column: Hashable):
+        self.target_column = target_column
+        self.high_wall = None
+        self.low_wall = None
+
+    def fit(self, X: pd.DataFrame, y=None):
+        """
+        Fits the transformer to the data by computing the 3-sigma boundaries.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input DataFrame.
+        y : Ignored
+            Not used, present for API consistency by convention.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        assert isinstance(X, pd.core.frame.DataFrame), f'expected Dataframe but got {type(X)} instead.'
+        assert self.target_column in X.columns.to_list(), f'unknown column {self.target_column}'
+        assert pd.api.types.is_numeric_dtype(X[self.target_column]), f'expected int or float in column {self.target_column}'
+
+        # Compute the mean and standard deviation of the target column
+        mean = X[self.target_column].mean()
+        sigma = X[self.target_column].std()
+
+        # Compute the low and high boundaries
+        self.low_wall = mean - 3 * sigma
+        self.high_wall = mean + 3 * sigma
+
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+        Transforms the input DataFrame by clipping the target column.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            The input DataFrame.
+
+        Returns
+        -------
+        pd.DataFrame
+            The transformed DataFrame with clipped values.
+        """
+
+        assert self.high_wall is not None and self.low_wall is not None, 'Sigma3Transformer.fit has not been called.'
+
+        # Clip the target column
+        X_clipped = X.copy()  # Create a copy to avoid modifying the original DataFrame
+        X_clipped[self.target_column] = X_clipped[self.target_column].clip(lower=self.low_wall, upper=self.high_wall)
+        
+        # Reset index
+        X_clipped = X_clipped.reset_index(drop=True)
+        
+        return X_clipped
+
