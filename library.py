@@ -289,26 +289,6 @@ class CustomDropColumnsTransformer(BaseEstimator, TransformerMixin):
 
 
 
-titanic_transformer = Pipeline(steps=[
-    ('gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
-    ('class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
-    ('ohe_joined', CustomOHETransformer(target_column='Joined')),
-    ('fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
-    ], verbose=True)
-
-
-
-customer_transformer = Pipeline(steps=[
-    ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
-    ('gender', CustomMappingTransformer('Gender', {'Female': 1, 'Male': 0})),
-    ('experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
-    ('os', CustomOHETransformer(target_column='OS')),
-    ('isp', CustomOHETransformer(target_column='ISP')),
-    ('time spent', CustomTukeyTransformer('Time Spent', 'inner')),
-    ], verbose=True)
-
-
-
 class CustomPearsonTransformer(BaseEstimator, TransformerMixin):
     """
     A custom scikit-learn transformer that removes highly correlated features
@@ -470,7 +450,6 @@ class CustomTukeyTransformer(BaseEstimator, TransformerMixin):
         self.outer_low = None
         self.inner_high = None
         self.outer_high = None
-        
 
     def fit(self, X: pd.DataFrame, y=None):
         """
@@ -537,3 +516,20 @@ class CustomTukeyTransformer(BaseEstimator, TransformerMixin):
         
         return X_clipped
 
+
+
+titanic_transformer = Pipeline(steps=[
+    ('gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
+    ('class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
+    ('ohe_joined', CustomOHETransformer(target_column='Joined')),
+    ('fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
+    ], verbose=True)
+
+customer_transformer = Pipeline(steps=[
+    ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
+    ('gender', CustomMappingTransformer('Gender', {'Female': 1, 'Male': 0})),
+    ('experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
+    ('os', CustomOHETransformer(target_column='OS')),
+    ('isp', CustomOHETransformer(target_column='ISP')),
+    ('time spent', CustomTukeyTransformer('Time Spent', 'inner')),
+    ], verbose=True)
