@@ -567,6 +567,61 @@ class CustomRobustTransformer(BaseEstimator, TransformerMixin):
 
 
 
+class CustomKNNTransformer(BaseEstimator, TransformerMixin):
+  """Imputes missing values using KNN.
+
+  This transformer wraps the KNNImputer from scikit-learn and hard-codes
+  add_indicator to be False. It also ensures that the input and output
+  are pandas DataFrames.
+
+  Parameters
+  ----------
+  n_neighbors : int, default=5
+      Number of neighboring samples to use for imputation.
+  weights : {'uniform', 'distance'}, default='uniform'
+      Weight function used in prediction. Possible values:
+      "uniform" : uniform weights. All points in each neighborhood
+      are weighted equally.
+      "distance" : weight points by the inverse of their distance.
+      in this case, closer neighbors of a query point will have a
+      greater influence than neighbors which are further away.
+  """
+  #your code below
+  def __init__(self, n_neighbors=5, weights='uniform'):
+        self.n_neighbors = n_neighbors
+        self.weights = weights
+        self.imputer = KNNImputer(n_neighbors=self.n_neighbors, 
+                                  weights=self.weights, 
+                                  add_indicator=False)
+        self.fit_columns_ = None  
+        
+  def fit(self, X, y=None):
+      self.imputer.fit(X)
+      self.fit_columns_ = X.columns
+      return self
+  
+  def transform(self, X):
+      # Check if the fit method has been called
+      if not hasattr(self.imputer, '_fit_X'):
+          raise AssertionError("NotFittedError: This CustomKNNTransformer instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.")
+
+      # Check if the columns in transform match the columns in fit
+      if set(self.fit_columns_) != set(X.columns):
+          mismatched_columns = list(set(self.fit_columns_).symmetric_difference(set(X.columns)))
+          raise ValueError(f"Column names mismatch. The following columns are either missing or added: {mismatched_columns}")
+      
+      # Warn if n_neighbors is greater than or equal to the number of samples
+      if self.n_neighbors >= self.imputer._fit_X.shape[0]:
+          import warnings
+          warnings.warn("n_neighbors is greater than or equal to the number of samples. Results may be unreliable.", UserWarning)
+
+      # Impute and return as a DataFrame
+      imputed_data = self.imputer.transform(X)
+      imputed_df = pd.DataFrame(imputed_data, columns=self.fit_columns_, index=X.index)  
+      return imputed_data
+      
+
+
 titanic_transformer = Pipeline(steps=[
     ('gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
     ('class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
@@ -574,7 +629,7 @@ titanic_transformer = Pipeline(steps=[
     ('fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
     ('fare scaling', CustomRobustTransformer('Fare')),
     ('age', CustomRobustTransformer('Age'))
-    ], verbose=True)
+    ], verbose=True),
 
 customer_transformer = Pipeline(steps=[
     ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
