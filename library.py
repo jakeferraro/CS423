@@ -572,6 +572,8 @@ titanic_transformer = Pipeline(steps=[
     ('class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
     ('ohe_joined', CustomOHETransformer(target_column='Joined')),
     ('fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
+    ('fare scaling', CustomRobustTransformer('Fare')),
+    ('age', CustomRobustTransformer('Age'))
     ], verbose=True)
 
 customer_transformer = Pipeline(steps=[
