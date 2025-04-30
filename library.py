@@ -629,7 +629,7 @@ titanic_transformer = Pipeline(steps=[
     ('fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
     ('fare scaling', CustomRobustTransformer('Fare')),
     ('age', CustomRobustTransformer('Age'))
-    ], verbose=True),
+    ], verbose=True)
 
 customer_transformer = Pipeline(steps=[
     ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
