@@ -735,5 +735,5 @@ customer_transformer = Pipeline(steps=[
     ('map_experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
     ('target_os', CustomTargetTransformer(target_column='OS', smoothing=10)),
     ('target_isp', CustomTargetTransformer(target_column='ISP', smoothing=10)),
-    ('tukey_time_spent', CustomTukeyTransformer(target_column='Time Spent', 'inner'))
+    ('tukey_time_spent', CustomTukeyTransformer(target_column='Time Spent', fence='inner'))
     ], verbose=True)
