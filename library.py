@@ -8,6 +8,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 import sklearn
 from sklearn import set_config
+from sklearn.impute import *
 set_config(transform_output="pandas")  #says pass pandas tables through pipeline instead of numpy matrices
 
 
