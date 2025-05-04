@@ -719,19 +719,21 @@ class CustomTargetTransformer(BaseEstimator, TransformerMixin):
 
 
 titanic_transformer = Pipeline(steps=[
-    ('gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
-    ('class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
-    ('ohe_joined', CustomTargetTransformer(col='Joined', smoothing=10)),
-    ('fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
-    ('fare scaling', CustomRobustTransformer('Fare')),
-    ('age', CustomRobustTransformer('Age'))
+    ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
+    ('map_class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
+    ('target_joined', CustomTargetTransformer(col='Joined', smoothing=10)),
+    ('tukey_age', CustomTukeyTransformer(target_column='Age', fence='outer')),
+    ('tukey_fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
+    ('scale_age', CustomRobustTransformer(target_column='Age')),
+    ('scale_fare', CustomRobustTransformer(target_column='Fare')),
+    ('impute', CustomKNNTransformer(n_neighbors=5)),
     ], verbose=True)
 
 customer_transformer = Pipeline(steps=[
     ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
-    ('gender', CustomMappingTransformer('Gender', {'Female': 1, 'Male': 0})),
-    ('experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
-    ('os', CustomTargetTransformer(col='OS', smoothing=10)),
-    ('isp', CustomTargetTransformer(col='ISP', smoothing=10)),
-    ('time spent', CustomTukeyTransformer('Time Spent', 'inner'))
+    ('map_gender', CustomMappingTransformer('Gender', {'Female': 1, 'Male': 0})),
+    ('map_experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
+    ('target_os', CustomTargetTransformer(col='OS', smoothing=10)),
+    ('target_isp', CustomTargetTransformer(col='ISP', smoothing=10)),
+    ('tukey_time_spent', CustomTukeyTransformer('Time Spent', 'inner'))
     ], verbose=True)
