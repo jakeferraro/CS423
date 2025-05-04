@@ -629,7 +629,7 @@ class CustomTargetTransformer(BaseEstimator, TransformerMixin):
 
     Parameters:
     -----------
-    col: name of column to encode.
+    target_column: name of column to encode.
     smoothing : float, default=10.0
         Smoothing factor. Higher values give more weight to the global mean.
     """
