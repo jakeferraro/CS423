@@ -9,6 +9,7 @@ from sklearn.pipeline import Pipeline
 import sklearn
 from sklearn import set_config
 from sklearn.impute import *
+from category_encoders import TargetEncoder
 set_config(transform_output="pandas")  #says pass pandas tables through pipeline instead of numpy matrices
 
 
