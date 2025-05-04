@@ -539,8 +539,8 @@ class CustomRobustTransformer(BaseEstimator, TransformerMixin):
     med : float
         The median of the target column.
   """
-  def __init__(self, column):
-        self.target_column = column
+  def __init__(self, target_column):
+        self.target_column = target_column
         self.iqr = None
         self.med = None
         self.fitted_ = False
@@ -634,8 +634,8 @@ class CustomTargetTransformer(BaseEstimator, TransformerMixin):
         Smoothing factor. Higher values give more weight to the global mean.
     """
 
-    def __init__(self, col: str, smoothing: float =10.0):
-        self.col = col
+    def __init__(self, target_column: str, smoothing: float =10.0):
+        self.col = target_column
         self.smoothing = smoothing
         self.global_mean_ = None
         self.encoding_dict_ = None
@@ -721,7 +721,7 @@ class CustomTargetTransformer(BaseEstimator, TransformerMixin):
 titanic_transformer = Pipeline(steps=[
     ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
     ('map_class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
-    ('target_joined', CustomTargetTransformer(col='Joined', smoothing=10)),
+    ('target_joined', CustomTargetTransformer(target_column='Joined', smoothing=10)),
     ('tukey_age', CustomTukeyTransformer(target_column='Age', fence='outer')),
     ('tukey_fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
     ('scale_age', CustomRobustTransformer(target_column='Age')),
@@ -733,7 +733,7 @@ customer_transformer = Pipeline(steps=[
     ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
     ('map_gender', CustomMappingTransformer('Gender', {'Female': 1, 'Male': 0})),
     ('map_experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
-    ('target_os', CustomTargetTransformer(col='OS', smoothing=10)),
-    ('target_isp', CustomTargetTransformer(col='ISP', smoothing=10)),
-    ('tukey_time_spent', CustomTukeyTransformer('Time Spent', 'inner'))
+    ('target_os', CustomTargetTransformer(target_column='OS', smoothing=10)),
+    ('target_isp', CustomTargetTransformer(target_column='ISP', smoothing=10)),
+    ('tukey_time_spent', CustomTukeyTransformer(target_column='Time Spent', 'inner'))
     ], verbose=True)
