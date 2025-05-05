@@ -756,7 +756,7 @@ def find_random_state(
     - A higher F1-score ratio (closer to 1) indicates better train-test consistency.
     """
 
-    model = KNeighborsClassifier(n_neighbors=5)
+    model = CustomKNNTransformer(n_neighbors=5, weights='uniform')
     Var: List[float] = []  # Collect test_f1/train_f1 ratios
 
     for i in range(n):
