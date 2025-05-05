@@ -803,10 +803,16 @@ titanic_transformer = Pipeline(steps=[
     ], verbose=True)
 
 customer_transformer = Pipeline(steps=[
-    ('drop_columns', CustomDropColumnsTransformer(column_list=['ID'], action='drop')),
-    ('map_gender', CustomMappingTransformer('Gender', {'Female': 1, 'Male': 0})),
-    ('map_experience_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2})),
-    ('target_os', CustomTargetTransformer(col='OS', smoothing=10)),
-    ('target_isp', CustomTargetTransformer(col='ISP', smoothing=10)),
-    ('tukey_time_spent', CustomTukeyTransformer(target_column='Time Spent', fence='inner'))
+    ('map_os', CustomMappingTransformer('OS', {'Android': 0, 'iOS': 1})),
+    ('target_isp', CustomTargetTransformer(col='ISP')),
+    ('map_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high':2})),
+    ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
+    ('tukey_age', CustomTukeyTransformer('Age', 'inner')),  
+    ('tukey_time spent', CustomTukeyTransformer('Time Spent', 'inner')),  
+    ('scale_age', CustomRobustTransformer(target_column='Age')), 
+    ('scale_time spent', CustomRobustTransformer(target_column='Time Spent')), 
+    ('impute', CustomKNNTransformer(n_neighbors=5)),
     ], verbose=True)
+
+titanic_variance_based_split = 107
+customer_variance_based_split = 113
