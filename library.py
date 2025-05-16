@@ -14,6 +14,9 @@ from sklearn.neighbors import KNeighborsClassifier  #the KNN model
 from sklearn.model_selection import train_test_split
 sklearn.set_config(transform_output="pandas")  #says pass pandas tables through pipeline instead of numpy matrices
 
+titanic_variance_based_split = 107   #add to your library
+customer_variance_based_split = 113  #add to your library
+
 class CustomOHETransformer(BaseEstimator, TransformerMixin):
     """
     Applies one-hot encoding to a specified column in a pandas DataFrame.
@@ -838,18 +841,6 @@ def dataset_setup(original_table, label_column_name:str, the_transformer, rs, ts
   y_test_numpy = np.array(y_test)
   return x_train_numpy, x_test_numpy, y_train_numpy,  y_test_numpy
 
-def titanic_setup(titanic_table, transformer=titanic_transformer, rs=titanic_variance_based_split, ts=.2):
-  x_train_numpy, x_test_numpy, y_train_numpy,  y_test_numpy = dataset_setup(titanic_table, 'Survived',  transformer, rs, ts)
-  return x_train_numpy, x_test_numpy, y_train_numpy,  y_test_numpy
-
-def customer_setup(customer_table, transformer=customer_transformer, rs=customer_variance_based_split, ts=.2):
-  x_train_numpy2, x_test_numpy2, y_train_numpy2,  y_test_numpy2 = dataset_setup(customer_table, 'Rating',  transformer, rs, ts)
-  return x_train_numpy2, x_test_numpy2, y_train_numpy2,  y_test_numpy2
-    
-  
-titanic_variance_based_split = 107   #add to your library
-customer_variance_based_split = 113  #add to your library
-    
 customer_transformer = Pipeline(steps=[
     ('map_os', CustomMappingTransformer('OS', {'Android': 0, 'iOS': 1})),
     ('target_isp', CustomTargetTransformer(col='ISP')),
@@ -873,3 +864,15 @@ titanic_transformer = Pipeline(steps=[
     ('scale_fare', CustomRobustTransformer(target_column='Fare')),
     ('impute', CustomKNNTransformer(n_neighbors=5)),
     ], verbose=True)
+
+def titanic_setup(titanic_table, transformer=titanic_transformer, rs=titanic_variance_based_split, ts=.2):
+  x_train_numpy, x_test_numpy, y_train_numpy,  y_test_numpy = dataset_setup(titanic_table, 'Survived',  transformer, rs, ts)
+  return x_train_numpy, x_test_numpy, y_train_numpy,  y_test_numpy
+
+def customer_setup(customer_table, transformer=customer_transformer, rs=customer_variance_based_split, ts=.2):
+  x_train_numpy2, x_test_numpy2, y_train_numpy2,  y_test_numpy2 = dataset_setup(customer_table, 'Rating',  transformer, rs, ts)
+  return x_train_numpy2, x_test_numpy2, y_train_numpy2,  y_test_numpy2
+    
+
+    
+
