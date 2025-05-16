@@ -7,6 +7,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.impute import KNNImputer
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.neighbors import KNeighborsClassifier  #the KNN model
+from sklearn.experimental import enable_halving_search_cv
 from sklearn.model_selection import train_test_split, ParameterGrid, HalvingGridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, roc_auc_score
