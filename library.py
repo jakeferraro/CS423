@@ -1,23 +1,23 @@
-from __future__ import annotations  # must be first line in your library!
+from __future__ import annotations  #must be first line in your library!
 import pandas as pd
 import numpy as np
 import types
-from typing import (
-    Dict, Any, Optional, Union, List, Set, Hashable,
-    Literal, Tuple, Self, Iterable
-)
+from typing import Dict, Any, Optional, Union, List, Set, Hashable, Literal, Tuple, Self, Iterable, Annotated
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.pipeline import Pipeline
 from sklearn.impute import KNNImputer
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.neighbors import KNeighborsClassifier  #the KNN model
+from sklearn.model_selection import train_test_split, ParameterGrid, HalvingGridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, roc_auc_score
 import sklearn
 import warnings
+sklearn.set_config(transform_output="pandas")  #says pass pandas tables through pipeline instead of numpy matrices
 
-# This sets built-in transformers to output pandas DataFrames
-sklearn.set_config(transform_output="pandas")
+titanic_variance_based_split = 107   #wrong but necessary for classwork
+customer_variance_based_split = 113  #wrong but necessary for classwork
+
+# ======================================= Transformers =======================================
 
 class CustomMappingTransformer(BaseEstimator, TransformerMixin):
     """
@@ -129,26 +129,18 @@ class CustomMappingTransformer(BaseEstimator, TransformerMixin):
         assert self.mapping_column in X.columns.to_list(), f'{self.__class__.__name__}.transform unknown column "{self.mapping_column}"'  #column legit?
         warnings.filterwarnings('ignore', message='.*downcasting.*')  #squash warning in replace method below
 
-        # Get unique non-NaN values
-        non_nan_values = set(X[self.mapping_column].dropna().unique())
-        
-        # Check for keys not found in column values
-        keys_not_found = set(k for k in self.mapping_dict.keys() if not pd.isna(k)) - non_nan_values
+        #now check to see if all keys are contained in column
+        column_set: Set[Any] = set(X[self.mapping_column].unique())
+        keys_not_found: Set[Any] = set(self.mapping_dict.keys()) - column_set
         if keys_not_found:
             print(f"\nWarning: {self.__class__.__name__}[{self.mapping_column}] does not contain these keys as values {keys_not_found}\n")
 
-        # Check for values without mapping keys
-        has_nan_in_data = X[self.mapping_column].isna().any()
-        has_nan_in_mapping = any(pd.isna(k) for k in self.mapping_dict.keys())
-        
-        keys_absent = non_nan_values - set(k for k in self.mapping_dict.keys() if not pd.isna(k))
-        if keys_absent or (has_nan_in_data and not has_nan_in_mapping):
-            missing_values = keys_absent
-            if has_nan_in_data and not has_nan_in_mapping:
-                missing_values = missing_values | {np.nan}
-            print(f"\nWarning: {self.__class__.__name__}[{self.mapping_column}] does not contain keys for these values {missing_values}\n")
+        #now check to see if some keys are absent
+        keys_absent: Set[Any] = column_set - set(self.mapping_dict.keys())
+        if keys_absent:
+            print(f"\nWarning: {self.__class__.__name__}[{self.mapping_column}] does not contain keys for these values {keys_absent}\n")
 
-        X_ = X.copy()
+        X_: pd.DataFrame = X.copy()
         X_[self.mapping_column] = X_[self.mapping_column].replace(self.mapping_dict)
         return X_
 
@@ -173,27 +165,60 @@ class CustomMappingTransformer(BaseEstimator, TransformerMixin):
         #self.fit(X,y)  #commented out to avoid warning message in fit
         result: pd.DataFrame = self.transform(X)
         return result
-    
+
+
 class CustomOHETransformer(BaseEstimator, TransformerMixin):
-    def __init__(self, target_column: str):
+    """
+    A transformer that applies one-hot encoding to a specified column using pandas.get_dummies.
+
+    This transformer follows the scikit-learn transformer interface and can be used in
+    a scikit-learn pipeline. It one-hot encodes a specified column, adding new binary
+    columns for each unique value in the original column.
+
+    Parameters
+    ----------
+    target_column : str
+        The name of the column to one-hot encode.
+
+    Attributes
+    ----------
+    target_column : str
+        The column that will be one-hot encoded.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({'color': ['red', 'blue', 'green', 'red']})
+    >>> ohe = CustomOHETransformer(target_column='color')
+    >>> transformed_df = ohe.fit_transform(df)
+    >>> transformed_df
+       color_blue  color_green  color_red
+    0           0            0          1
+    1           1            0          0
+    2           0            1          0
+    3           0            0          1
+    """
+
+    def __init__(self, target_column: str) -> None:
         self.target_column = target_column
 
-    def fit(self, X, y=None):
-        return self  # no fitting logic required for now
+    def fit(self, X: pd.DataFrame, y: Optional[Iterable] = None) -> "CustomOHETransformer":
+        return self
 
-    def transform(self, X):
-        # check input
-        assert isinstance(X, pd.DataFrame), f'{self.__class__.__name__}.transform expected DataFrame but got {type(X)} instead.'
-        assert self.target_column in X.columns, f'{self.__class__.__name__}.transform unknown column {self.target_column}'
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(X, pd.DataFrame):
+            raise AssertionError(
+                f'{self.__class__.__name__}.transform expected Dataframe but got {type(X)} instead.'
+            )
 
-        # one-hot encode the target column only
-        X_ = X.copy()
-        # Add dummy_na=True to create a column for NaN values
-        dummies = pd.get_dummies(X_[self.target_column], prefix=self.target_column, dummy_na=True).astype(int)
-        X_ = X_.drop(columns=[self.target_column])
-        X_ = pd.concat([X_, dummies], axis=1)
-        return X_
-    
+        if self.target_column not in X.columns:
+            raise AssertionError(
+                f'{self.__class__.__name__}.transform unknown column {self.target_column}'
+            )
+
+        return pd.get_dummies(X, columns=[self.target_column], dtype=int)
+
+
 class CustomDropColumnsTransformer(BaseEstimator, TransformerMixin):
     """
     A transformer that either drops or keeps specified columns in a DataFrame.
@@ -258,26 +283,32 @@ class CustomDropColumnsTransformer(BaseEstimator, TransformerMixin):
         self.column_list: List[str] = column_list
         self.action: Literal['drop', 'keep'] = action
 
-    #your code below
-    def fit(self, X, y=None):
+    def fit(self, X: pd.DataFrame, y=None) -> "CustomDropColumnsTransformer":
         return self
 
-    def transform(self, X):
-        assert isinstance(X, pd.DataFrame), f'{self.__class__.__name__}.transform expected DataFrame but got {type(X)} instead.'
-        X_ = X.copy()
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(X, pd.DataFrame):
+            raise AssertionError(
+                f'{self.__class__.__name__}.transform expected DataFrame but got {type(X)} instead.'
+            )
 
         if self.action == 'keep':
-            # Raise an error if trying to keep a column that doesn't exist
-            missing = [col for col in self.column_list if col not in X.columns]
-            assert not missing, f'{self.__class__.__name__}.transform missing columns requested in "keep": {missing}'
-            return X_[self.column_list]
+            missing_cols = set(self.column_list) - set(X.columns)
+            if missing_cols:
+                raise AssertionError(
+                    f'{self.__class__.__name__}.transform unknown columns to keep: {missing_cols}'
+                )
+            return X[self.column_list]
 
         elif self.action == 'drop':
-            # Warn but don't fail if trying to drop a column that doesn't exist
-            missing = [col for col in self.column_list if col not in X.columns]
-            if missing:
-                warnings.warn(f'{self.__class__.__name__}.transform columns not found and skipped in "drop": {missing}')
-            return X_.drop(columns=self.column_list, errors='ignore')
+            missing_cols = set(self.column_list) - set(X.columns)
+            if missing_cols:
+                warnings.warn(
+                    f'{self.__class__.__name__} does not contain these columns to drop: {missing_cols}.',
+                    UserWarning
+                )
+            return X.drop(columns=self.column_list, errors='ignore')
+
 
 class CustomPearsonTransformer(BaseEstimator, TransformerMixin):
     """
@@ -296,31 +327,29 @@ class CustomPearsonTransformer(BaseEstimator, TransformerMixin):
         A list of column names that are identified as highly correlated and will be removed.
     """
 
-    def __init__(self, threshold: float = 0.4):
+    def __init__(self, threshold=0.4):
         self.threshold = threshold
-        self.correlated_columns: Optional[List[Hashable]] = None
+        self.correlated_columns = None
 
-    def fit(self, X: pd.DataFrame, y: Optional[Iterable] = None) -> Self:
-        assert isinstance(X, pd.DataFrame), f'{self.__class__.__name__}.fit expected DataFrame but got {type(X)} instead.'
-
-        numeric_df = X.select_dtypes(include=[np.number])
-        corr_matrix = numeric_df.corr().abs()
-        mask = np.triu(corr_matrix.values, k=1).astype(bool)
-
+    def fit(self, X, y=None):
+        df_corr = X.corr(method='pearson')
+        # Boolean mask of correlations above threshold
+        masked_df = df_corr.abs() > self.threshold
+        # Get upper triangle without diagonal
+        upper_mask = np.triu(masked_df.values, k=1)
+        # Find columns to drop
         self.correlated_columns = [
-            col for col_idx, col in enumerate(corr_matrix.columns)
-            if np.any(mask[:, col_idx])
+            masked_df.columns[i]
+            for i, col in enumerate(upper_mask.T)
+            if np.any(col)
         ]
         return self
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        assert self.correlated_columns is not None, f"{self.__class__.__name__}.transform called before fit."
+    def transform(self, X):
+        assert self.correlated_columns is not None, "PearsonTransformer.transform called before fit."
+        return X.drop(columns=self.correlated_columns)
 
-        X_ = X.copy()
-        return X_.drop(columns=self.correlated_columns, errors='ignore')
 
-    def fit_transform(self, X: pd.DataFrame, y: Optional[Iterable] = None) -> pd.DataFrame:
-        return self.fit(X, y).transform(X)
 class CustomSigma3Transformer(BaseEstimator, TransformerMixin):
     """
     A transformer that applies 3-sigma clipping to a specified column in a pandas DataFrame.
@@ -341,35 +370,29 @@ class CustomSigma3Transformer(BaseEstimator, TransformerMixin):
     low_wall : Optional[float]
         The lower bound for clipping, computed as mean - 3 * standard deviation.
     """
-
     def __init__(self, target_column: Hashable):
         self.target_column = target_column
         self.low_wall: Optional[float] = None
         self.high_wall: Optional[float] = None
 
     def fit(self, X: pd.DataFrame, y=None):
-        if self.target_column not in X.columns:
-            raise ValueError(f"Column '{self.target_column}' not found in DataFrame.")
-
-        if not pd.api.types.is_numeric_dtype(X[self.target_column]):
-            raise TypeError(f"Column '{self.target_column}' must be numeric.")
+        assert isinstance(X, pd.DataFrame), "Input must be a pandas DataFrame."
+        assert self.target_column in X.columns, f"unknown column {self.target_column}"
+        assert pd.api.types.is_numeric_dtype(X[self.target_column]), f"expected numeric dtype in column {self.target_column}"
 
         mean = X[self.target_column].mean()
         std = X[self.target_column].std()
-
-        self.low_wall = mean - 3 * std
-        self.high_wall = mean + 3 * std
-
+        self.low_wall = float(mean - 3 * std)
+        self.high_wall = float(mean + 3 * std)
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        if self.low_wall is None or self.high_wall is None:
-            raise ValueError("Transformer has not been fitted yet.")
+        assert self.low_wall is not None and self.high_wall is not None, "Sigma3Transformer.fit has not been called."
+        X_copy = X.copy()
+        X_copy[self.target_column] = X_copy[self.target_column].clip(self.low_wall, self.high_wall)
+        return X_copy.reset_index(drop=True)
 
-        X = X.copy()
-        X[self.target_column] = X[self.target_column].clip(lower=self.low_wall, upper=self.high_wall)
-        return X
-    
+
 class CustomTukeyTransformer(BaseEstimator, TransformerMixin):
     """
     A transformer that applies Tukey's fences (inner or outer) to a specified column in a pandas DataFrame.
@@ -394,111 +417,107 @@ class CustomTukeyTransformer(BaseEstimator, TransformerMixin):
         The upper bound for clipping using the inner fence (Q3 + 1.5 * IQR).
     outer_high : Optional[float]
         The upper bound for clipping using the outer fence (Q3 + 3.0 * IQR).
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({'values': [10, 15, 14, 20, 100, 5, 7]})
+    >>> tukey_transformer = CustomTukeyTransformer(target_column='values', fence='inner')
+    >>> transformed_df = tukey_transformer.fit_transform(df)
+    >>> transformed_df
     """
-
     def __init__(self, target_column: Hashable, fence: Literal['inner', 'outer'] = 'outer'):
-        self.target_column = str(target_column)  # Convert to string to handle column names with spaces
+        self.target_column = target_column
         self.fence = fence
-
         self.inner_low: Optional[float] = None
         self.inner_high: Optional[float] = None
         self.outer_low: Optional[float] = None
         self.outer_high: Optional[float] = None
 
     def fit(self, X: pd.DataFrame, y=None):
-        if self.target_column not in X.columns:
-            raise ValueError(f"Column '{self.target_column}' not found in DataFrame.")
-        if not pd.api.types.is_numeric_dtype(X[self.target_column]):
-            raise TypeError(f"Column '{self.target_column}' must be numeric.")
+        assert isinstance(X, pd.DataFrame), "Input must be a pandas DataFrame."
+        assert self.target_column in X.columns, f"TukeyTransformer: unknown column {self.target_column}"
+        assert pd.api.types.is_numeric_dtype(X[self.target_column]), f"expected numeric dtype in column {self.target_column}"
 
         Q1 = X[self.target_column].quantile(0.25)
         Q3 = X[self.target_column].quantile(0.75)
         IQR = Q3 - Q1
 
-        self.inner_low = Q1 - 1.5 * IQR
-        self.inner_high = Q3 + 1.5 * IQR
-        self.outer_low = Q1 - 3.0 * IQR
-        self.outer_high = Q3 + 3.0 * IQR
-
+        self.inner_low = float(Q1 - 1.5 * IQR)
+        self.inner_high = float(Q3 + 1.5 * IQR)
+        self.outer_low = float(Q1 - 3.0 * IQR)
+        self.outer_high = float(Q3 + 3.0 * IQR)
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        if self.inner_low is None or self.outer_low is None:
-            raise ValueError("Transformer has not been fitted yet.")
+        assert self.inner_low is not None and self.outer_low is not None, "TukeyTransformer.fit has not been called."
 
-        X = X.copy()
+        X_copy = X.copy()
 
         if self.fence == 'inner':
-            low, high = self.inner_low, self.inner_high
+            low = self.inner_low
+            high = self.inner_high
         elif self.fence == 'outer':
-            low, high = self.outer_low, self.outer_high
+            low = self.outer_low
+            high = self.outer_high
         else:
-            raise ValueError(f"Invalid fence type: {self.fence}. Use 'inner' or 'outer'.")
+            raise ValueError("Fence must be either 'inner' or 'outer'.")
 
-        X[self.target_column] = X[self.target_column].clip(lower=low, upper=high)
-        return X
+        X_copy[self.target_column] = X_copy[self.target_column].clip(low, high)
+        return X_copy.reset_index(drop=True)
+
 
 class CustomRobustTransformer(BaseEstimator, TransformerMixin):
     """Applies robust scaling to a specified column in a pandas DataFrame.
-    This transformer calculates the interquartile range (IQR) and median
-    during the `fit` method and then uses these values to scale the
-    target column in the `transform` method.
+      This transformer calculates the interquartile range (IQR) and median
+      during the `fit` method and then uses these values to scale the
+      target column in the `transform` method.
 
-    Parameters
-    ----------
-    target_column : str
-        The name of the column to be scaled.
+      Parameters
+      ----------
+      column : str
+          The name of the column to be scaled.
 
-    Attributes
-    ----------
-    target_column : str
-        The name of the column to be scaled.
-    iqr : float
-        The interquartile range of the target column.
-    med : float
-        The median of the target column.
+      Attributes
+      ----------
+      target_column : str
+          The name of the column to be scaled.
+      iqr : float
+          The interquartile range of the target column.
+      med : float
+          The median of the target column.
     """
-
-    def __init__(self, target_column: str):
+    def __init__(self, target_column):
         self.target_column = target_column
         self.iqr = None
         self.med = None
-        self.is_fitted_ = False  # Track fit status
+        self._is_fitted = False
 
     def fit(self, X, y=None):
-        # Check if column exists
         if self.target_column not in X.columns:
             raise AssertionError(f"CustomRobustTransformer.fit unrecognizable column {self.target_column}.")
-
-        # Extract target column and convert to float64
-        col_data = X[self.target_column].astype('float64')
-        # Compute median and IQR
-        self.med = col_data.median()
+        
+        col_data = X[self.target_column].dropna()
         q1 = col_data.quantile(0.25)
         q3 = col_data.quantile(0.75)
         self.iqr = q3 - q1
-
-        self.is_fitted_ = True  # Mark as fitted
-        return self  # For chaining
+        self.med = col_data.median()
+        self._is_fitted = True
+        return self
 
     def transform(self, X):
-        if not self.is_fitted_:
-            raise NotFittedError(f"This {self.__class__.__name__} instance is not fitted yet. "
-                                f"Call 'fit' with appropriate arguments before using this transformer.")
+        if not self._is_fitted:
+            raise AssertionError("NotFittedError: This CustomRobustTransformer instance is not fitted yet. Call \"fit\" with appropriate arguments before using this estimator.")
+        
+        X_copy = X.copy()
+        if self.iqr == 0 or self.med == 0:
+            return X_copy  # skip binary or degenerate column
 
-        # Create a deep copy to avoid SettingWithCopyWarning
-        X_ = X.copy(deep=True)
+        X_copy[self.target_column] = X_copy[self.target_column].apply(
+            lambda x: (x - self.med) / self.iqr if pd.notnull(x) else x
+        )
+        return X_copy
 
-        # Skip if IQR == 0
-        if self.iqr == 0 or pd.isna(self.iqr):
-            print(f"Skipping transformation for column '{self.target_column}' due to IQR=0")
-            return X_
-
-        # Convert column to float64 before calculation
-        X_[self.target_column] = X_[self.target_column].astype('float64')
-        # Use loc to avoid SettingWithCopyWarning
-        X_.loc[:, self.target_column] = (X_[self.target_column] - self.med) / self.iqr
-        return X_
 
 class CustomKNNTransformer(BaseEstimator, TransformerMixin):
   """Imputes missing values using KNN.
@@ -519,29 +538,40 @@ class CustomKNNTransformer(BaseEstimator, TransformerMixin):
       in this case, closer neighbors of a query point will have a
       greater influence than neighbors which are further away.
   """
-  #your code below
-  def __init__(self, n_neighbors=5, weights='uniform'):
-        self.n_neighbors = n_neighbors
-        self.weights = weights
-        self.imputer = KNNImputer(n_neighbors=self.n_neighbors, weights=self.weights)
+  # Custom Typing!
+  PositiveInt = Annotated[int, lambda x: x > 0]
 
-  def fit(self, X, y=None):
-      if not isinstance(X, pd.DataFrame):
-          X = pd.DataFrame(X)
-      self.imputer.fit(X)
-      # Set a flag or use sklearn's method to ensure it's fitted
+  def __init__(self, n_neighbors: PositiveInt = 5, weights: str = "uniform"):
+      self.n_neighbors = n_neighbors
+      self.weights = weights
+      self.knn_imputer = KNNImputer(n_neighbors=n_neighbors, weights=weights, add_indicator=False)
+      self._is_fitted = False  # track if fit was called
+      self._fit_columns = None  # store columns fitted on
+
+  def fit(self, X: pd.DataFrame, y=None):
+      # Check if n_neighbors is greater than number of samples
+      if self.n_neighbors > len(X):
+          warnings.warn("n_neighbors is greater than number of samples. KNNImputer may behave unexpectedly.")
+
+      self.knn_imputer.fit(X)
       self._is_fitted = True
+      self._fit_columns = X.columns.tolist()
       return self
 
-  def transform(self, X):
-      if not hasattr(self, '_is_fitted'):
-          raise NotFittedError(f"This {type(self).__name__} instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.")
-      
-      if not isinstance(X, pd.DataFrame):
-          X = pd.DataFrame(X)
-      X_imputed = self.imputer.transform(X)
-      return pd.DataFrame(X_imputed, columns=X.columns, index=X.index)
-  
+  def transform(self, X: pd.DataFrame):
+      if not self._is_fitted:
+          raise AssertionError("NotFittedError: This CustomKNNTransformer instance is not fitted yet. Call 'fit' with appropriate arguments before using this estimator.")
+
+      # Check if columns match what we fitted on
+      if X.columns.tolist() != self._fit_columns:
+          warnings.warn("Column names mismatch between fit and transform data. Transform may fail or produce incorrect results.")
+
+      return self.knn_imputer.transform(X)
+
+  def fit_transform(self, X: pd.DataFrame, y=None):
+      return self.fit(X, y).transform(X)
+
+
 class CustomTargetTransformer(BaseEstimator, TransformerMixin):
     """
     A target encoder that applies smoothing and returns np.nan for unseen categories.
@@ -575,10 +605,10 @@ class CustomTargetTransformer(BaseEstimator, TransformerMixin):
         assert isinstance(y, Iterable), f'{self.__class__.__name__}.fit expected Iterable but got {type(y)} instead.'
         assert len(X) == len(y), f'{self.__class__.__name__}.fit X and y must be same length but got {len(X)} and {len(y)} instead.'
 
-        # Create new df with just col and target
-        X_ = pd.DataFrame({self.col: X[self.col].copy()})
+        #Create new df with just col and target - enables use of pandas methods below
+        X_ = X[[self.col]]
         target = self.col+'_target_'
-        X_.loc[:, target] = y
+        X_[target] = y
 
         # Calculate global mean
         self.global_mean_ = X_[target].mean()
@@ -634,7 +664,36 @@ class CustomTargetTransformer(BaseEstimator, TransformerMixin):
             Target values.
         """
         return self.fit(X, y).transform(X)
-    
+        
+# ======================================== Pipelines =======================================
+
+titanic_transformer = Pipeline(steps=[
+    ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
+    ('map_class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3})),
+    ('target_joined', CustomTargetTransformer(col='Joined', smoothing=10)),
+    ('tukey_age', CustomTukeyTransformer(target_column='Age', fence='outer')),
+    ('tukey_fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
+    ('scale_age', CustomRobustTransformer(target_column='Age')),
+    ('scale_fare', CustomRobustTransformer(target_column='Fare')),
+    ('impute', CustomKNNTransformer(n_neighbors=5)),
+    ('passthrough', FunctionTransformer(validate=False)),  #does nothing but does remove warning
+    ], verbose=True)
+
+customer_transformer = Pipeline(steps=[
+    ('map_os', CustomMappingTransformer('OS', {'Android': 0, 'iOS': 1})),
+    ('target_isp', CustomTargetTransformer(col='ISP')),
+    ('map_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high':2})),
+    ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1})),
+    ('tukey_age', CustomTukeyTransformer('Age', 'inner')),  #from chapter 4
+    ('tukey_time spent', CustomTukeyTransformer('Time Spent', 'inner')),  #from chapter 4
+    ('scale_age', CustomRobustTransformer(target_column='Age')), #from 5
+    ('scale_time spent', CustomRobustTransformer(target_column='Time Spent')), #from 5
+    ('impute', CustomKNNTransformer(n_neighbors=5)),
+    ('passthrough', FunctionTransformer(validate=False)),  #does nothing but does remove warning
+    ], verbose=True)
+
+# ==================================== Auxiliary Functions =================================
+
 def find_random_state(
     features_df: pd.DataFrame,
     labels: Iterable,
@@ -675,7 +734,7 @@ def find_random_state(
 
     model = KNeighborsClassifier(n_neighbors=5)
     Var: List[float] = []  # Collect test_f1/train_f1 ratios
-
+                      
     for i in range(n):
         train_X, test_X, train_y, test_y = train_test_split(
             features_df, labels, test_size=0.2, shuffle=True,
@@ -706,73 +765,84 @@ def find_random_state(
 
     return rs_value, Var
 
-  
 
-# Random state values for reproducibility
-titanic_variance_based_split = 107
-customer_variance_based_split = 113
-
-#first define the pipeline
-titanic_transformer = Pipeline(steps=[
-    ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1, np.nan: np.nan})),
-    ('map_class', CustomMappingTransformer('Class', {'Crew': 0, 'C3': 1, 'C2': 2, 'C1': 3, np.nan: np.nan})),
-    ('target_joined', CustomTargetTransformer(col='Joined', smoothing=10)),
-    ('tukey_age', CustomTukeyTransformer(target_column='Age', fence='outer')),
-    ('tukey_fare', CustomTukeyTransformer(target_column='Fare', fence='outer')),
-    ('scale_age', CustomRobustTransformer(target_column='Age')),
-    ('scale_fare', CustomRobustTransformer(target_column='Fare')),
-    ('impute', CustomKNNTransformer(n_neighbors=5)),
-    ], verbose=True)
-
-customer_transformer = Pipeline(steps=[
-    ('map_os', CustomMappingTransformer('OS', {'Android': 0, 'iOS': 1, np.nan: np.nan})),
-    ('target_isp', CustomTargetTransformer(col='ISP')),
-    ('map_level', CustomMappingTransformer('Experience Level', {'low': 0, 'medium': 1, 'high': 2, np.nan: np.nan})),
-    ('map_gender', CustomMappingTransformer('Gender', {'Male': 0, 'Female': 1, np.nan: np.nan})),
-    ('tukey_age', CustomTukeyTransformer('Age', 'inner')),  #from chapter 4
-    ('tukey_time spent', CustomTukeyTransformer('Time Spent', 'inner')),  #from chapter 4
-    ('scale_age', CustomRobustTransformer(target_column='Age')), #from 5
-    ('scale_time spent', CustomRobustTransformer(target_column='Time Spent')), #from 5
-    ('impute', CustomKNNTransformer(n_neighbors=5)),
-    ], verbose=True)
-
-
-def dataset_setup(original_table, label_column_name: str, the_transformer, rs, ts=0.2, shuffle=True):
-    # Separate features and label
-    X = original_table.drop(columns=[label_column_name])
-    y = original_table[label_column_name]
-
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=ts, random_state=rs, shuffle=shuffle
-    )
-
-    # Fit-transform with both X and y if required
+def dataset_setup(original_table, label_column_name:str, the_transformer, rs, ts=.2):
+    #your code below
+    # useful trimmed tables
+    labels = original_table[label_column_name].to_list()
+    table_features = original_table.drop(columns=label_column_name)
+    
+    # create taining and test subdata
+    X_train, X_test, y_train, y_test = train_test_split(table_features, labels, test_size=ts, shuffle=True,
+                                                    random_state=rs, stratify=labels)
+    
+    # fit and transform data
     X_train_transformed = the_transformer.fit_transform(X_train, y_train)
     X_test_transformed = the_transformer.transform(X_test)
-
-    # Convert to NumPy arrays if not already
-    x_train_numpy = X_train_transformed.to_numpy() if hasattr(X_train_transformed, "to_numpy") else X_train_transformed
-    x_test_numpy = X_test_transformed.to_numpy() if hasattr(X_test_transformed, "to_numpy") else X_test_transformed
-    y_train_numpy = y_train.to_numpy()
-    y_test_numpy = y_test.to_numpy()
-
-    return x_train_numpy, x_test_numpy, y_train_numpy, y_test_numpy
+    
+    # numpy conversion
+    X_train_numpy = X_train_transformed.to_numpy()
+    X_test_numpy = X_test_transformed.to_numpy()
+    y_train_numpy = np.array(y_train)
+    y_test_numpy = np.array(y_test)
+    
+    return X_train_numpy, X_test_numpy, y_train_numpy,  y_test_numpy
 
 def titanic_setup(titanic_table, transformer=titanic_transformer, rs=titanic_variance_based_split, ts=.2):
-  return dataset_setup(
-          original_table=titanic_table,
-          label_column_name='Survived',
-          the_transformer=transformer,
-          rs=rs,
-          ts=ts
-      )
+    return dataset_setup(titanic_table, 'Survived', transformer, rs, ts)
 
 def customer_setup(customer_table, transformer=customer_transformer, rs=customer_variance_based_split, ts=.2):
-  return dataset_setup(
-          original_table=customer_table,
-          label_column_name='Rating',
-          the_transformer=transformer,
-          rs=rs,
-          ts=ts
-      )
+    return dataset_setup(customer_table, 'Rating', transformer, rs, ts)
+
+
+def threshold_results(thresh_list, actuals, predicted):
+    result_df = pd.DataFrame(columns=['threshold', 'precision', 'recall', 'f1', 'accuracy', 'auc'])
+    for t in thresh_list:
+        yhat = [1 if v >=t else 0 for v in predicted]
+        precision = precision_score(actuals, yhat, zero_division=0)
+        recall = recall_score(actuals, yhat, zero_division=0)
+        f1 = f1_score(actuals, yhat)
+        accuracy = accuracy_score(actuals, yhat)
+        auc = roc_auc_score(actuals, predicted)
+        result_df.loc[len(result_df)] = {'threshold':t, 'precision':precision, 'recall':recall, 'f1':f1, 'accuracy': accuracy, 'auc':auc}
+
+    result_df = result_df.round(2)
+
+    #See https://betterdatascience.com/style-pandas-dataframes/
+    headers = {
+        "selector": "th:not(.index_name)",
+        "props": "background-color: #800000; color: white; text-align: center"
+    }
+    properties = {"border": "1px solid black", "width": "65px", "text-align": "center"}
+    
+    fancy_df = result_df.style.highlight_max(color = 'pink', axis = 0).format(precision=2).set_properties(**properties).set_table_styles([headers])
+    return (result_df, fancy_df)
+
+
+def halving_search(model, grid, x_train, y_train, factor=2, min_resources="exhaust", scoring='roc_auc'):
+    #your code below
+    halving_cv = HalvingGridSearchCV(
+        model, grid,  #our model and the parameter combos we want to try
+        scoring=scoring,  #from chapter 10
+        n_jobs=-1,  #use all available cpus
+        min_resources=min_resources,  #"exhaust" sets this to 20, which is non-optimal. Possible bug in algorithm. See https://github.com/scikit-learn/scikit-learn/issues/27422.
+        factor=factor,  #double samples and take top half of combos on each iteration
+        cv=5, random_state=1234,
+        refit=True,  #remembers the best combo and gives us back that model already trained and ready for testing
+    )
+    
+    grid_result = halving_cv.fit(x_train, y_train)
+    return grid_result
+
+
+def sort_grid(grid):
+    sorted_grid = grid.copy()
+    
+    #sort values - note that this will expand range for you
+    for k,v in sorted_grid.items():
+        sorted_grid[k] = sorted(sorted_grid[k], key=lambda x: (x is None, x))  #handles cases where None is an alternative value
+    
+    #sort keys
+    sorted_grid = dict(sorted(sorted_grid.items()))
+    
+    return sorted_grid
