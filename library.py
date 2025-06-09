@@ -18,6 +18,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_sc
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.experimental import enable_halving_search_cv
 from sklearn.model_selection import ParameterGrid, HalvingGridSearchCV
+from joblib import dump, load
 
 # This sets built-in transformers to output pandas DataFrames
 sklearn.set_config(transform_output="pandas")
